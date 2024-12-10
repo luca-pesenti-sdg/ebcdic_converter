@@ -1,0 +1,30 @@
+#!/usr/local/bin/python3
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+from core.log import Log
+from core.cli import CommandLine
+import core.extract as Extract
+from core.parsecp2 import EBCDICParser
+
+import sys
+
+
+def main(arg):
+
+    cli = CommandLine()
+
+    log = Log(cli.verbose)
+
+    if cli.args.function == "extract":
+        Extract.FileProcess(log, cli.args)
+    elif cli.args.function == "parse":
+        EBCDICParser.run_parse(log, cli.args)
+    else:
+        log.Write(["not implemented yet"])
+
+    log.Finish()
+
+
+if __name__ == "__main__":
+    main(sys.argv)
