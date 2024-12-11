@@ -6,7 +6,7 @@ HighestPositive = "7fffffffffffffffffff"
 def unpack(bytes: bytearray, type: str, dec_places: int, rem_lv: bool, rem_spaces: bool = False):
     #
     # Formats ebcdic text, zoned, big endian binary or decinal data into unpacked/string ascii data.
-    #
+    
     # Parameters:
     #  - bytes (bytearray): The content to be extracted
     #  - type  (str)......:
@@ -17,10 +17,10 @@ def unpack(bytes: bytearray, type: str, dec_places: int, rem_lv: bool, rem_space
     #   - bi+: signed binary        | pic s9 comp
     #   - pd : packed-decimal       | pic  9 comp-3
     #   - pd+: signed packed-decimal| pic s9 comp-3
-    #
+    
     # Returns:
     #  - ascii string
-    #
+    
     # Test sample:
     #  import struct
     #  ori = 9223372036854775807
@@ -28,7 +28,7 @@ def unpack(bytes: bytearray, type: str, dec_places: int, rem_lv: bool, rem_space
     #  ori = ori * -1
     #  print(ori, unpack(struct.pack(">q",ori),"bi+"))
     #  print(unpack(bytearray.fromhex("f0f0f1c1"), "zd+"))
-    #
+    
     # Input examples:
     # - 8 bytes comp-signed   struct q: -9,223,372,036,854,775,808 through +9,223,372,036,854,775,807
     # - 8 bytes comp-unsigned struct Q: 0 through 18,446,744,073,709,551,615

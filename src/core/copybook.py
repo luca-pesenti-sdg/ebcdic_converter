@@ -68,6 +68,21 @@ def getLenType(atr, p):
 
 ############# DICTIONARY AND HIERARCHICAL LOGIC ###########################
 def add2dict(lvl, grp, itm, stt, id):
+    """
+    Adds an item to a dictionary with specific attributes and handles nested structures.
+    Parameters:
+    lvl (int): The level of the item in the hierarchy.
+    grp (bool): Indicates if the item is a group.
+    itm (str): The name of the item.
+    stt (list): A list of strings representing the item's attributes.
+    id (int): The identifier for the item.
+    Raises:
+    Exception: If 'OCCURS' is present in stt without 'TIMES'.
+    Notes:
+    - If the item name is "FILLER", it appends a unique number to it.
+    - Manages a stack to handle nested structures based on the level.
+    - Extracts and sets various attributes for the item, such as 'occurs', 'redefines', 'pict', 'type', 'length', 'bytes', and 'dplaces'.
+    """
 
     global cur, output, last, stack, FillerCount
 
@@ -114,6 +129,20 @@ output={}
 stack = {}
 
 def toDict(lines):
+    """
+    Converts a list of lines from a copybook into a dictionary representation.
+    Args:
+        lines (list of str): The lines from the copybook file.
+    Returns:
+        dict: A dictionary representation of the copybook fields.
+    Raises:
+        SystemExit: If an unexpected character is found in column 7 of any line.
+    Notes:
+        - Lines with a '*' in column 7 are considered comments and ignored.
+        - Lines with 'SKIP1', 'SKIP2', or 'SKIP3' in the first attribute are skipped.
+        - Fields are split by periods and attributes are further split by spaces.
+        - The function assumes that the `add2dict` function is defined elsewhere in the code.
+    """
 
     id = 0
     stt = ""

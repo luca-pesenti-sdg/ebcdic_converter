@@ -9,6 +9,24 @@ sortklen = 0
 
 ###### Create the extraction parameter file
 def CreateExtraction(obj, altstack=[], partklen=0, sortklen=0):
+    """
+    Recursively processes a nested dictionary to create an extraction layout.
+
+    Args:
+        obj (dict): The input dictionary containing the structure to be processed.
+        altstack (list, optional): A list used to keep track of the current stack of group names. Defaults to an empty list.
+        partklen (int, optional): The length of the partition key. Defaults to 0.
+        sortklen (int, optional): The length of the sort key. Defaults to 0.
+
+    Globals:
+        lrecl (int): The current logical record length.
+        altpos (int): The current position in the alternate layout list.
+        transf (list): The list where the extracted items are stored.
+        altlay (list): The list where the alternate layout items are stored.
+
+    Returns:
+        None
+    """
     global lrecl
     global altpos
     for k in obj:
@@ -52,6 +70,21 @@ def CreateExtraction(obj, altstack=[], partklen=0, sortklen=0):
 ############################### MAIN ###################################
 
 def RunParse(log, iparm):
+    """
+    Executes the parsing process based on the provided parameters.
+
+    Args:
+        log: Logger object for logging messages.
+        iparm: An object containing input parameters including:
+            - copybook: Path to the copybook file.
+            - json_debug: Path to the JSON debug file (optional).
+            - part_k_len: Length of the partition key.
+            - sort_k_len: Length of the sort key.
+            - json: Path to the output JSON file.
+
+    Returns:
+        None
+    """
 
     global transf
     global lrecl
