@@ -6,38 +6,6 @@ class Copybook:
         self.__output = {}
         self.__stack = {}
 
-    @property
-    def __filler_count(self):
-        return self.__filler_count
-
-    @__filler_count.setter
-    def __filler_count(self, value):
-        self._radius = value
-
-    @property
-    def __cursor(self):
-        return self.__cursor
-
-    @__cursor.setter
-    def __cursor(self, value):
-        self.__cursor = value
-
-    @property
-    def __output(self):
-        return self.__output
-
-    @__output.setter
-    def __output(self, value):
-        self.__output = value
-
-    @property
-    def __stack(self):
-        return self.__stack
-
-    @__stack.setter
-    def __stack(self, value):
-        self.__stacks = value
-
     # Old function getPicSize
     def __get_pic_size(self, arg):
         if arg.find("(") > 0:
@@ -114,9 +82,8 @@ class Copybook:
         if item.upper() == "FILLER":
             self.__filler_count += 1
             item = item + "_" + str(self.__filler_count)
-
         if level <= self.__cursor:
-            stack = self.__remove_stack(self.__stack, level)
+            self.__stack = self.__remove_stack(self.__stack, level)
 
         stack = self.__get_stack()
         stack[item] = {}
@@ -124,16 +91,17 @@ class Copybook:
         stack[item]["level"] = level
         stack[item]["group"] = group
 
-        if "OCCURS" in statement and "TIMES" in statement:
-            stack[item]["occurs"] = int(statement[statement.index("TIMES") - 1])
-        else:
-            raise Exception("OCCURS WITHOUT TIMES?" + " ".join(statement))
+        if "OCCURS" in statement: 
+            if "TIMES" in statement:
+                stack[item]["occurs"] = int(statement[statement.index("TIMES") - 1])
+            else:
+                raise Exception("OCCURS WITHOUT TIMES?" + " ".join(statement))
 
         if "REDEFINES" in statement:
             stack[item]["redefines"] = statement[statement.index("REDEFINES") + 1]
 
-        if group:
-            stack[level] = item
+        if group == True:
+            self.__stack[level] = item
             self.__cursor = level
         else:
             tplen = {}
@@ -151,12 +119,12 @@ class Copybook:
         id = 0
         statement = ""
         for line in self._lines:
-            content = line[6:72].strip()
-            if len(content) > 1:
+            content = line[6:72]
+            if len(content.strip()) > 1:
                 first_char = line[6]
                 if first_char in [" ", "-"]:
                     first_word = content.split()[0]
-                    if first_word not in ["SKIP1", "SKIP2", "SKIP3"]:
+                    if not first_word in ["SKIP1", "SKIP2", "SKIP3"]:
                         statement += content.replace("\t", " ")
                 elif first_char != "*":
                     print("Unexpected character in column 7:", line)
@@ -173,3 +141,4 @@ class Copybook:
                         statement=attribute,
                         id=id,
                     )
+        return self.__output

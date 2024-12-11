@@ -3,9 +3,15 @@
 
 
 class EBCDICDecoder:
-    HighestPositive = "7fffffffffffffffffff"
 
-    def __init__(self, bytes: bytearray, type: str, rem_lv: bool, dec_places: int = 0):
+    def __init__(
+        self,
+        bytes: bytearray,
+        type: str,
+        rem_lv: bool,
+        dec_places: int = 0,
+        rem_spaces: bool = False,
+    ):
         """
         Initializes the EBCDICDecoder class.
 
@@ -18,27 +24,8 @@ class EBCDICDecoder:
         self._type = type.lower()
         self._rem_lv = rem_lv
         self._dec_places = dec_places
-        self._unpack_map = {
-            "ch": self._unpack_text,
-            "zd": self._unpack_zoned,
-            "zd+": self._unpack_zoned,
-            "bi": self._unpack_binary,
-            "bi+": self._unpack_binary,
-            "pd": self._packed_decimal,
-            "pd+": self._packed_decimal,
-            "hex": self._bytes.hex,
-            "bit": self._packed_decimal,
-        }
-
-    def _add_dec_places(value, decimal_places) -> int:
-        if decimal_places == 0:
-            return value
-        else:
-            return (
-                value[: len(value) - decimal_places]
-                + "."
-                + value[len(value) - decimal_places :]
-            )
+        self._rem_spaces = rem_spaces  # seems useless
+        self._HighestPositive = "7fffffffffffffffffff"
 
     def unpack(self):
         """
@@ -47,76 +34,46 @@ class EBCDICDecoder:
         Returns:
         - str: The unpacked ASCII data
         """
-        if self._bytes in list(self._unpack_map.keys()):
-            return self._unpack_map[self._bytes]()
+        # Text
+        if self._type == "ch":
+            return self._bytes.decode('cp037').replace('\x00', '').rstrip() if self._rem_lv == True else self._bytes.decode('cp037')
+
+        # Packed Decimal
+        elif self._type == "pd" or self._type == "pd+":
+            return _add_dec_places(("" if self._bytes.hex()[-1:] != "d" and self._bytes.hex()[-1:] != "b" else "-") + self._bytes.hex()[:-1], self._dec_places)
+
+        # Binary
+        elif self._type == "bi" or (self._type == "bi+" and self._bytes.hex() <= self._HighestPositive[:len(self._bytes)*2]):
+            return _add_dec_places(str(int("0x" + self._bytes.hex(), 0)),self._dec_places)
+        
+        # Signed Binary
+        elif self._type == "bi+":
+            return _add_dec_places(str(int("0x" + self._bytes.hex(), 0) - int("0x" + len(self._bytes) * 2 * "f", 0) -1), self._dec_places)
+
+        # Zoned
+        if self._type == "zd":
+            return _add_dec_places(self._bytes.decode('cp037').replace('\x00', '').rstrip(), self._dec_places)
+
+        # Signed Zoned
+        elif self._type == "zd+":
+            return _add_dec_places(("" if self._bytes.hex()[-2:-1] != "d" else "-") + self._bytes[:-1].decode('cp037') + self._bytes.hex()[-1:], self._dec_places)
+
+        elif self._type == "hex":
+            return self._bytes.hex() 
+
+        elif self._type == "bit":
+            return ';'.join( bin(bytes[0]).replace("0b", "").zfill(len(self._bytes)*8))
+        
         else:
-            raise ValueError("Invalid type")
+            print("---------------------------\nLength & Type not supported\nLength: ",len(self._bytes),"\nType..: " ,type)
+            exit()
 
-    def _unpack_text(self):
-        """
-        Unpacks EBCDIC text data.
-
-        Returns:
-        - str: The unpacked ASCII text
-        """
-        if self.rem_lv == True:
-            return bytes.decode("cp037").replace("\x00", "").rstrip()
-        else:
-            return bytes.decode("cp037")
-
-    def _unpack_zoned(self, signed: bool = False):
-        """
-        Unpacks EBCDIC zoned data.
-
-        Returns:
-        - str: The unpacked ASCII zoned data
-        """
-        if not signed:
-            return self._add_dec_places(
-                bytes.decode("cp037").replace("\x00", "").rstrip(), self._dec_places
-            )
-        else:
-            self._add_dec_places(
-                ("" if bytes.hex()[-2:-1] != "d" else "-")
-                + bytes[:-1].decode("cp037")
-                + bytes.hex()[-1:],
-                self._dec_places,
-            )
-
-    def _unpack_binary(self, signed: bool = False):
-        """
-        Unpacks EBCDIC binary data.
-
-        Returns:
-        - str: The unpacked ASCII binary data
-        """
-        # TO DO: implement binary unpacking logic
-        if not signed:
-            return self._add_dec_places(
-                str(int("0x" + bytes.hex(), 0)), self._dec_places
-            )
-        else:
-            return self._add_dec_places(
-                str(
-                    int("0x" + bytes.hex(), 0) - int("0x" + len(bytes) * 2 * "f", 0) - 1
-                ),
-                self._dec_places,
-            )
-
-    def _packed_decimal(self):
-        """
-        Unpacks EBCDIC packed-decimal data.
-
-        Returns:
-        - str: The unpacked ASCII packed-decimal data
-        """
-        return self._add_dec_places(("" if bytes.hex()[-1:] != "d" and bytes.hex()[-1:] != "b" else "-") + bytes.hex()[:-1], self._dec_places)
-
-    def _unpack_bit(self):
-        """
-        Unpacks EBCDIC bit data.
-
-        Returns:
-        - str: The unpacked ASCII bit data
-        """
-        return ';'.join( bin(self._bytes[0]).replace("0b", "").zfill(len(self._bytes)*8))
+def _add_dec_places(value,  decimal_places) -> int:
+    if decimal_places == 0:
+        return value
+    else:
+        return (
+            value[: len(value) - decimal_places]
+            + "."
+            + value[len(value) - decimal_places :]
+        )

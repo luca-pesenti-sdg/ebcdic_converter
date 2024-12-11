@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
-import boto3
+# import boto3
 
 class FileMetaData:
 
@@ -19,7 +19,7 @@ class FileMetaData:
             log.Write(['Downloading json metadata from s3', args.json_s3, args.json])
 
             #pending try / except
-            self.general = json.load(boto3.client('s3').get_object(Bucket=args.json_s3, Key=args.json)['Body'])
+            # self.general = json.load(boto3.client('s3').get_object(Bucket=args.json_s3, Key=args.json)['Body'])
 
         #override and validate json parameters
         if args.input != '':        self.general['input']       = args.input

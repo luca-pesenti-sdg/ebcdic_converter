@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # TODO: remove the following libraries
-import boto3, urllib3
-from botocore.exceptions import ClientError
+# import boto3, urllib3
+# from botocore.exceptions import ClientError
 # ----------------------------
 import multiprocessing as mp
 from core.filemeta      import FileMetaData
@@ -56,19 +56,19 @@ def FileProcess(log, ExtArgs):
 
             log.Write(['Downloading file from s3', inp_temp])
 
-            #try except missing
-            with open(inp_temp, 'wb') as f:
-                boto3.client('s3').download_fileobj(fMetaData.general['input_s3'], fMetaData.general['input'], f)
+            # #try except missing
+            # with open(inp_temp, 'wb') as f:
+            #     boto3.client('s3').download_fileobj(fMetaData.general['input_s3'], fMetaData.general['input'], f)
 
         else:
             log.Write(['Downloading file from s3 url'])
 
-            http = urllib3.PoolManager()
+            # http = urllib3.PoolManager()
 
-            resp = http.request('GET', fMetaData.general['input_s3_url'])
+            # resp = http.request('GET', fMetaData.general['input_s3_url'])
 
-            with open(inp_temp, 'wb') as f:
-                f.write(resp.data)
+            # with open(inp_temp, 'wb') as f:
+            #     f.write(resp.data)
 
         InpDS = open(inp_temp,"rb")
 
@@ -189,7 +189,7 @@ def write_output(log, fMetaData, outfile, record, newl):
 
 def ddb_write(log, table, data):
     log.Write(['Updating DynamoDB', str(len(data))])
-    response = boto3.client('dynamodb').batch_write_item(RequestItems={ table : data })
+    # response = boto3.client('dynamodb').batch_write_item(RequestItems={ table : data })
 
 def close_output(log, fMetaData, outfile, OutDs, strSuff = ''):
     """
@@ -222,19 +222,19 @@ def close_output(log, fMetaData, outfile, OutDs, strSuff = ''):
 
             if fMetaData.general['verbose']: log.Write(['Source file', OutDs])
 
-            try:
-                response = boto3.client('s3').upload_file(OutDs, fMetaData.general['output_s3'], fMetaData.general['output'] + strSuff)
+            # try:
+            #     response = boto3.client('s3').upload_file(OutDs, fMetaData.general['output_s3'], fMetaData.general['output'] + strSuff)
 
-            except ClientError as e:
-                log.Write(e)
+            # except ClientError as e:
+            #     log.Write(e)
 
         elif fMetaData.general['input_s3_url'] != '':
 
             log.Write(['Generating s3 lambda object response'])
 
             # try/except missing
-            with open(OutDs, 'rb') as f:
-                boto3.client('s3').write_get_object_response(Body=f,RequestRoute=fMetaData.general['input_s3_route'],RequestToken=fMetaData.general['input_s3_token'])
+            # with open(OutDs, 'rb') as f:
+            #     boto3.client('s3').write_get_object_response(Body=f,RequestRoute=fMetaData.general['input_s3_route'],RequestToken=fMetaData.general['input_s3_token'])
 
     else:
         if len(outfile) >= 0: ddb_write(log, fMetaData.general['output'], outfile)

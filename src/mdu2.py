@@ -2,6 +2,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from core.extract2 import EBCDICProcess
 from core.log import Log
 from core.cli import CommandLine
 import core.extract as Extract
@@ -17,9 +18,9 @@ def main(arg):
     log = Log(cli.verbose)
 
     if cli.args.function == "extract":
-        Extract.FileProcess(log, cli.args)
+        EBCDICProcess(log, cli.args, output_separator='\t').process()
     elif cli.args.function == "parse":
-        EBCDICParser.run_parse(log, cli.args)
+        EBCDICParser().run_parse(log, cli.args)
     else:
         log.Write(["not implemented yet"])
 
