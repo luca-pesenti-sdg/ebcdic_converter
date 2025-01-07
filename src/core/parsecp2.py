@@ -106,3 +106,4 @@ class EBCDICParser:
             
         with open(iparm.json, "w") as fout:
             fout.write(json.dumps(param, indent=4))
+        return param

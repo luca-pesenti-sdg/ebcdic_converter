@@ -18,9 +18,12 @@ def main(arg):
     log = Log(cli.verbose)
 
     if cli.args.function == "extract":
-        EBCDICProcess(log, cli.args, output_separator='\t').process()
+        EBCDICProcess(log, cli.args, output_separator='\x7F').process()
     elif cli.args.function == "parse":
         EBCDICParser().run_parse(log, cli.args)
+    elif cli.args.function == "both":
+        EBCDICParser().run_parse(log, cli.args)
+        EBCDICProcess(log, cli.args, output_separator='\x7F').process()
     else:
         log.Write(["not implemented yet"])
 

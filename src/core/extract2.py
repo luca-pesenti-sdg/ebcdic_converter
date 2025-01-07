@@ -71,6 +71,7 @@ class EBCDICProcess:
         layout = self._metadata_file.Layout(record)
         if layout != "discard":
             for transf in self._metadata_file.general[layout]:
+                # print(record[transf["offset"] : transf["offset"] + transf["bytes"]])
                 self._add_field(
                     output_record=output_record,
                     id=transf["name"],
@@ -157,6 +158,7 @@ class EBCDICProcess:
 
     def _read(self, input):
         if self._record_format == "fb":
+            print(input)
             return input.read(self._record_length)
         else:
             l = self._getRDW(input.read(4))
@@ -190,6 +192,7 @@ class EBCDICProcess:
         input_file = self._input_obj_map[self._input_type]()
         while index < self._max or self._max == 0:
             record = self._read(input_file)
+            print(record)
             if not record:
                 break
             index += 1
