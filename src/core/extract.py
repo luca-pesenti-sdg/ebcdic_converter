@@ -1,311 +1,299 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# TODO: remove the following libraries
-# import boto3, urllib3
-# from botocore.exceptions import ClientError
-# ----------------------------
+from io import BufferedReader, TextIOWrapper
 import multiprocessing as mp
-from core.filemeta      import FileMetaData
-from core.ebcdic        import unpack
-from itertools          import cycle
-from pathlib            import Path
+from typing import List, Union
+from core.ebcdic import EBCDICDecoder
+from core.filemeta import FileMetaData
+from core.ebcdic import unpack
+from itertools import cycle
+from pathlib import Path
+import argparse
+from core.log import Log
 
-def FileProcess(log, ExtArgs):
-    """
-    Processes an input file based on the provided metadata and arguments.
 
-    Args:
-        log (Logger): Logger object for logging messages.
-        ExtArgs (dict): Dictionary containing external arguments and metadata.
+class EBCDICProcess:
 
-    Description:
-        This function processes an input file by downloading it from a local path, S3, or a URL,
-        and then processes each record in the file. It supports both single-threaded and multi-threaded
-        processing. The processed records are written to an output file or multiple output files
-        depending on the threading configuration.
+    def __init__(self, logger: Log, extra_args: argparse.Namespace, output_separator: str = None):
+        self._logger = logger
+        self._extra_args = extra_args
 
-    Steps:
-        1. Download the input file based on the input type (local, s3, or s3 URL).
-        2. Open the output file(s) for writing.
-        3. Process each input record and write to the output file(s).
-        4. If multi-threaded, manage worker processes and queues for parallel processing.
-        5. Log the number of records processed.
+        # The following remapping is done to make the code more readable but could be avoided
+        self._metadata_file = FileMetaData(self._logger, self._extra_args)
+        self._input_file = self._metadata_file.general["input"]
+        self._output_type = self._metadata_file.general["output_type"]
+        self._output = self._metadata_file.general["output"]
+        self._working_folder = self._metadata_file.general["working_folder"]
+        self._input_type = self._metadata_file.inputtype
+        self._threads = self._metadata_file.general["threads"]
+        self._print = self._metadata_file.general["print"]
+        self._skip = self._metadata_file.general["skip"]
+        self._part_k_name = self._metadata_file.general["part_k_name"]
+        self._sort_k_name = self._metadata_file.general["sort_k_name"]
+        self._rem_low_values = self._metadata_file.general["rem_low_values"]
+        self._output_separator = self._metadata_file.general["output_separator"] if not output_separator else output_separator
+        self._req_size = self._metadata_file.general["req_size"]
+        self._verbose = self._metadata_file.general["verbose"]
+        self._max = self._metadata_file.general["max"]
+        # Expressed in bytes
+        self._record_length = self._metadata_file.general["input_recl"]
 
-    Raises:
-        Exception: If there are issues with downloading the file from S3 or URL.
+        # NOTE: I'm not sure about the name
+        self._record_format = self._metadata_file.general["input_recfm"]
 
-    Note:
-        - The function assumes that the `FileMetaData` and other helper functions like `read`, `write_output`,
-          `close_output`, and `queue_worker` are defined elsewhere in the codebase.
-        - The function also assumes that the `boto3` and `urllib3` libraries are imported and available.
-    """
+        # S3 related
+        self._output_s3 = self._metadata_file.general["output_s3"]
+        self._input_s3_url = self._metadata_file.general["input_s3"]
 
-    # Download the output file
-    fMetaData = FileMetaData(log, ExtArgs)
+        # NOTE: originally it was s3-obj but I think it was a typo since it is written everywhere else as s3_obj
+        self._output_record = (
+            [] if self._output_type in ["file", "s3_obj", "s3"] else {}
+        )
 
-    if fMetaData.inputtype == 'local':
+        # returns True if threads == 1
+        self._single_thread = self._metadata_file.general["threads"] == 1
 
-        InpDS = open(fMetaData.general['input'],"rb")
+        # NOTE: Extend here to handle other file location
+        self._input_obj_map = {
+            "s3": self._get_s3_file_obj,
+            "s3_url": self._get_s3_file_obj,
+            "local": self._get_local_file_obj,
+        }
 
-    else:
+    def _write_output(
+        self,
+        output_file: Union[TextIOWrapper, List],
+        record: bytes,
+        new_line: str,
+    ) -> bool:
+        output_record = [] if self._output_type in ["file", "s3-obj", "s3"] else {}
+        layout = self._metadata_file.Layout(record)
+        if layout != "discard":
+            for transf in self._metadata_file.general[layout]:
+                # print(record[transf["offset"] : transf["offset"] + transf["bytes"]])
+                self._add_field(
+                    output_record=output_record,
+                    id=transf["name"],
+                    type=transf["type"],
+                    partkey=transf["part-key"],
+                    sortkey=transf["sort-key"],
+                    value=EBCDICDecoder(
+                        bytes=record[
+                            transf["offset"] : transf["offset"] + transf["bytes"]
+                        ],
+                        type=transf["type"],
+                        dec_places=transf["dplaces"],
+                        rem_lv=self._rem_low_values,
+                        rem_spaces=False,
+                    ).unpack(),
+                    add_empty=False,  # seems useless
+                )
+            if self._output_type in ["file", "s3_obj", "s3"]:
+                output_file.write(new_line + self._output_separator.join(output_record))
 
-        inp_temp = fMetaData.general['working_folder'] + fMetaData.general['input'].split("/")[-1]
+            # This can be removed, since we only use local files, but is kept for clarity
+            else:
+                output_file.append({"PutRequest": {"Item": output_record}})
 
-        if fMetaData.inputtype == 's3':
+                if len(output_file) >= self._req_size:
+                    self._logger.Write(["Writing batch to DynamoDB"])
+                    self._write_to_dynamodb()
+                    output_file.clear()
+            return True
+        return False
 
-            log.Write(['Downloading file from s3', inp_temp])
-
-            # #try except missing
-            # with open(inp_temp, 'wb') as f:
-            #     boto3.client('s3').download_fileobj(fMetaData.general['input_s3'], fMetaData.general['input'], f)
-
+    def _add_field(
+        self, output_record, id, type, partkey, sortkey, value, add_empty: bool = False
+    ):
+        if self._output_type in ["file", "s3-obj", "s3"]:
+            output_record.append(value)
         else:
-            log.Write(['Downloading file from s3 url'])
+            if not partkey and not sortkey:
+                if value != "" or add_empty:
+                    output_record[id.replace("-", "_")] = {}
+                    output_record[id.replace("-", "_")][
+                        "S" if type == "ch" else "N"
+                    ] = value
+            elif not partkey:
+                if self._sort_k_name in output_record:
+                    output_record[self._sort_k_name]["S"] = (
+                        self._output_record[self._sort_k_name]["S"] + "|" + value
+                    )
+                else:
+                    output_record[self._sort_k_name] = {}
+                    output_record[self._sort_k_name]["S"] = value
+            else:
+                if self._part_k_name in output_record:
+                    output_record[self._part_k_name]["S"] = (
+                        output_record[self._part_k_name]["S"] + "|" + value
+                    )
+                else:
+                    output_record[self._part_k_name] = {}
+                    output_record[self._part_k_name]["S"] = value
 
-            # http = urllib3.PoolManager()
+    # region CORE METHODS
 
-            # resp = http.request('GET', fMetaData.general['input_s3_url'])
+    def process(self):
+        if self._single_thread:
+            output_file = self._generate_outfile_single_thread()
+            self._process_single_thread(output_file)
+        else:
+            output_files = self._generate_outfile_multi_thread()
+            self._process_multi_thread(output_files)
 
-            # with open(inp_temp, 'wb') as f:
-            #     f.write(resp.data)
+    def _get_local_file_obj(self) -> BufferedReader:
+        return open(self._input_file, "rb")
 
-        InpDS = open(inp_temp,"rb")
+    def _get_s3_file_obj(self) -> None:
+        self._logger.Write(["EBCDICProcess: s3 not implemented yet"])
+        return None
 
-    log.Write([ '# of threads' , str(fMetaData.general['threads']) ])
+    def _get_s3_url_file_obj(self) -> None:
+        self._logger.Write(["EBCDICProcess: s3_url not implemented yet"])
+        return None
 
-    # Open the output file if single trheaded
-    if fMetaData.general['threads'] == 1:
+    def _getRDW(b: bytearray):
+        return int("0x" + b[:2].hex(), 0) - 4 if len(b) > 0 else 0
 
-        if fMetaData.general['output_type'] in ['file', 's3_obj', 's3']:
+    def _read(self, input):
+        if self._record_format == "fb":
+            print(input)
+            return input.read(self._record_length)
+        else:
+            l = self._getRDW(input.read(4))
+            print(l)
+            return input.read(l)
 
-            log.Write(['Creating output file', fMetaData.general['working_folder'], fMetaData.general['output']])
+    # endregion
 
-            folder = Path(fMetaData.general['working_folder'] + fMetaData.general['output']).parent
+    # region SINGLE THREADED METHODS
+    def _generate_outfile_single_thread(
+        self,
+    ) -> Union[TextIOWrapper, List]:
+        self._logger.Write(["EBCDICProcess: single-threaded processing selected"])
+
+        if self._output_type in ["file", "s3_obj", "s3"]:
+            self._logger.Write(
+                ["Creating output file", self._working_folder, self._output]
+            )
+            folder = Path(self._working_folder + self._output).parent
 
             Path(folder).mkdir(parents=True, exist_ok=True)
 
-            outfile = open(fMetaData.general['working_folder'] + fMetaData.general['output'], 'w')
-            newl = ''
+            return open(self._working_folder + self._output, "w")
+        else:
+            return []
+
+    def _process_single_thread(self, output_file: Union[TextIOWrapper, List]):
+        self._logger.Write(["EBCDICProcess: single-threaded processing selected"])
+        index = 0
+        new_line = ""
+        input_file = self._input_obj_map[self._input_type]()
+        while index < self._max or self._max == 0:
+            record = self._read(input_file)
+            print(record)
+            if not record:
+                break
+            index += 1
+            if index > self._skip:
+                if self._print != 0 and index % self._print == 0:
+                    self._logger.Write(["Records read", str(index)])
+                r = self._write_output(output_file, record, new_line=new_line)
+                if r:
+                    new_line = "\n"
+        self._logger.Write(["Records processed", str(index)])
+
+    # endregion
+
+    # region MULTI THREADED METHODS
+    def _generate_outfile_multi_thread(self) -> List:
+        self._logger.Write(["EBCDICProcess: multi-threaded processing selected"])
+        file_list = []
+        for thread_number in range(1, self._threads + 1):
+            outfile_name = (
+                self._working_folder + self._output + "." + str(thread_number)
+            )
+            file_list.append(outfile_name)
+
+        return file_list
+
+    def _queue_worker(self, out_ds, queue_dict: dict, suffix: str = ""):
+
+        if self._output_type in ["file", "s3_obj", "s3"]:
+            outfile = open(out_ds, "w")
         else:
             outfile = []
 
-    # Create threads if multi threaded
-    else:
-        lstFiles = []
-        dctQueue = {}
-        lstProce = []
+        new_line = ""
 
-        for f in range(1, fMetaData.general['threads']+1):
+        while True:
+            record = queue_dict.get()
 
-            strOutFile = fMetaData.general['working_folder'] + fMetaData.general['output'] + "." + str(f)
-
-            lstFiles.append(strOutFile)
-
-            dctQueue[strOutFile] = mp.Queue()
-
-            p = mp.Process(target=queue_worker, args=(log, fMetaData, strOutFile, dctQueue[strOutFile], '.' + str(f)))
-
-            p.start()
-
-            lstProce.append(p)
-
-        cyFiles = cycle(lstFiles)
-
-    # Process each input record
-    i=0
-    newl=''
-    while i < fMetaData.general['max'] or fMetaData.general['max'] == 0:
-
-        record = read(InpDS, fMetaData.general['input_recfm'], fMetaData.general["input_recl"])
-
-        if not record: break
-
-        i+= 1
-        if i > fMetaData.general["skip"]:
-
-            if(fMetaData.general["print"] != 0 and i % fMetaData.general["print"] == 0): log.Write(['Records read', str(i)])
-
-            if fMetaData.general['threads'] == 1:
-                r = write_output(log, fMetaData, outfile, record, newl)
-                if r: newl='\n'
+            if record is not None:
+                r = self._write_output(outfile, record, new_line)
+                if r:
+                    new_line = "\n"
             else:
-                nxq = next(cyFiles)
-                dctQueue[nxq].put(record)
+                self._logger.Write(["Closing output", self._output, "thread", suffix])
+                self._close_output(outfile=outfile, out_ds=out_ds, suffix=suffix)
+                break
 
-    if fMetaData.general['threads'] == 1:
-        close_output(log, fMetaData, outfile, fMetaData.general['working_folder'] + fMetaData.general['output'])
-    else:
-        # stop /wait for the workers
-        for f in lstFiles: dctQueue[f].put(None)
-        for p in lstProce: p.join()
+    def _process_multi_thread(self, output_files: List):
+        self._logger.Write(["EBCDICProcess: multi-threaded processing selected"])
 
-    log.Write(['Records processed', str(i)])
+        queue_dict = {}
+        process_list = []
 
-def write_output(log, fMetaData, outfile, record, newl):
-    """
-    Processes a record and writes the output to a specified destination.
+        for file in output_files:
+            queue_dict[file] = mp.Queue()
+            process = mp.Process(
+                target=self._queue_worker,
+                args=(file, queue_dict[file], "." + file.split(".")[-1]),
+            )
+            process.start()
+            process_list.append(process)
 
-    Parameters:
-    log (Logger): Logger object for logging messages.
-    fMetaData (object): Metadata object containing configuration and layout information.
-    outfile (file or list): Output file object or list to store the processed records.
-    record (bytes): The input record to be processed.
-    newl (str): Newline character(s) to be used in the output file.
+        index = 0
+        while index < self._max or self._max == 0:
+            record = self._read(self._input_obj_map[self._input_type]())
+            cycle_files = cycle(process_list)
+            next_queue = next(cycle_files)
+            queue_dict[next_queue].put(record)
 
-    Returns:
-    bool: True if the record was processed and written successfully, False if the record was discarded.
-    """
+        for file in output_files:
+            queue_dict[file].put(None)
+        for process in process_list:
+            process.join()
 
-    OutRec = [] if fMetaData.general['output_type'] in ['file', 's3-obj', 's3'] else {}
+        self._logger.Write(["Records processed", str(index)])
 
-    layout = fMetaData.Layout(record)
+    def _close_output(self, outfile, out_ds, suffix=""):
 
-    if layout != 'discard':
-
-        for transf in fMetaData.general[layout]:
-            addField(
-                fMetaData.general['output_type'],
-                OutRec,
-                transf['name'],
-                transf['type'],
-                transf['part-key'],
-                fMetaData.general['part_k_name'],
-                transf['sort-key'],
-                fMetaData.general['sort_k_name'],
-                unpack(record[transf["offset"]:transf["offset"]+transf["bytes"]], transf["type"], transf["dplaces"], fMetaData.general["rem_low_values"], False ),
-                False)
-
-        if fMetaData.general['output_type'] in ['file', 's3_obj', 's3']:
-            outfile.write(newl + fMetaData.general['output_separator'].join(OutRec))
+        if self._output_type in ["file", "s3_obj", "s3"]:
+            outfile.close()
+            if self._output_s3 != "":
+                self._logger.Write(
+                    ["Uploading to s3", self._output_s3, self._output + suffix]
+                )
+                if self._verbose:
+                    self._logger.Write(["Source file", out_ds])
+                # try:
+                #     response = boto3.client('s3').upload_file(out_ds, fMetaData.general['output_s3'], fMetaData.general['output'] + suffix)
+                # except ClientError as e:
+                #     self._logger.Write(e)
+            elif self._input_s3_url != "":
+                self._logger.Write(["Generating s3 lambda object response"])
+                # try/except missing
+                # with open(out_ds, 'rb') as f:
+                #     boto3.client('s3').write_get_object_response(Body=f,RequestRoute=fMetaData.general['input_s3_route'],RequestToken=fMetaData.general['input_s3_token'])
         else:
-            outfile.append({'PutRequest' : { 'Item' : OutRec }})
+            if len(outfile) >= 0:
+                self._write_to_dynamodb()
 
-            if len(outfile) >= fMetaData.general['req_size']:
-                ddb_write(log, fMetaData.general['output'], outfile)
-                outfile.clear()
-        return True
-    return False
+    # endregion
 
-def ddb_write(log, table, data):
-    log.Write(['Updating DynamoDB', str(len(data))])
-    # response = boto3.client('dynamodb').batch_write_item(RequestItems={ table : data })
-
-def close_output(log, fMetaData, outfile, OutDs, strSuff = ''):
-    """
-    Closes the output file and handles the upload to S3 or DynamoDB based on the metadata configuration.
-
-    Parameters:
-    log (object): Logger object to write log messages.
-    fMetaData (object): Metadata object containing configuration details.
-    outfile (file object): The output file object to be closed.
-    OutDs (str): The source file path to be uploaded.
-    strSuff (str, optional): Suffix to be added to the output file name. Defaults to an empty string.
-
-    Raises:
-    ClientError: If there is an error during the S3 upload process.
-
-    Notes:
-    - If the output type is 'file', 's3_obj', or 's3', the function will close the output file and handle the S3 upload.
-    - If the output_s3 field in metadata is not empty, the function will upload the file to the specified S3 bucket.
-    - If the input_s3_url field in metadata is not empty, the function will generate an S3 lambda object response.
-    - If the output type is not 'file', 's3_obj', or 's3', the function will write the output to DynamoDB if the outfile length is greater than or equal to 0.
-    """
-
-    if fMetaData.general['output_type'] in ['file', 's3_obj', 's3']:
-
-        outfile.close()
-
-        if fMetaData.general['output_s3'] != '':
-
-            log.Write(['Uploading to s3',  fMetaData.general['output_s3'], fMetaData.general['output'] + strSuff])
-
-            if fMetaData.general['verbose']: log.Write(['Source file', OutDs])
-
-            # try:
-            #     response = boto3.client('s3').upload_file(OutDs, fMetaData.general['output_s3'], fMetaData.general['output'] + strSuff)
-
-            # except ClientError as e:
-            #     log.Write(e)
-
-        elif fMetaData.general['input_s3_url'] != '':
-
-            log.Write(['Generating s3 lambda object response'])
-
-            # try/except missing
-            # with open(OutDs, 'rb') as f:
-            #     boto3.client('s3').write_get_object_response(Body=f,RequestRoute=fMetaData.general['input_s3_route'],RequestToken=fMetaData.general['input_s3_token'])
-
-    else:
-        if len(outfile) >= 0: ddb_write(log, fMetaData.general['output'], outfile)
-
-def queue_worker(log, fMetaData, OutDs, q, strSuf = ''):
-
-    if fMetaData.general['output_type'] in ['file', 's3_obj', 's3']:
-        outfile = open(OutDs, 'w')
-    else:
-        outfile = []
-
-    newl = ''
-
-    while True:
-        record = q.get()
-
-        if record is not None:
-            r = write_output(log, fMetaData, outfile, record, newl)
-            if r: newl='\n'
-        else:
-            log.Write(['Closing output', fMetaData.general['output'], 'thread', strSuf])
-            close_output(log, fMetaData, outfile, OutDs, strSuf)
-            break
-
-def read(input, recfm, lrecl):
-
-    if recfm == 'fb':
-        return input.read(lrecl)
-    else:
-        l = getRDW(input.read(4))
-        return input.read(l)
-
-def getRDW(b: bytearray):
-    return int("0x" + b[:2].hex(), 0) - 4 if len(b) > 0 else 0
-
-def addField(outtype, record, id, type, partkey, partkname, sortkey, sortkname, value, addempty = False):
-    """
-    Adds a field to the record based on the specified parameters.
-
-    Parameters:
-    outtype (str): The output type, which can be 'file', 's3-obj', or 's3'.
-    record (list or dict): The record to which the field will be added. It can be a list or a dictionary.
-    id (str): The identifier for the field.
-    type (str): The type of the field, either "ch" for string or another type for numeric.
-    partkey (bool): A flag indicating if the field is a partition key.
-    partkname (str): The name of the partition key.
-    sortkey (bool): A flag indicating if the field is a sort key.
-    sortkname (str): The name of the sort key.
-    value (str): The value to be added to the record.
-    addempty (bool, optional): A flag indicating if empty values should be added. Default is False.
-
-    Returns:
-    None
-    """
-
-    if outtype in ['file', 's3-obj', 's3']:
-        record.append(value)
-    else:
-        if not partkey and not sortkey:
-            if value != '' or addempty:
-                record[id.replace('-','_')] = {}
-                record[id.replace('-','_')]['S' if type == "ch" else 'N'] = value
-        elif not partkey:
-            if sortkname in record:
-                record[sortkname]['S'] = record[sortkname]['S'] + "|" + value
-            else:
-                record[sortkname] = {}
-                record[sortkname]['S'] = value
-        else:
-            if partkname in record:
-                record[partkname]['S'] = record[partkname]['S'] + "|" + value
-            else:
-                record[partkname] = {}
-                record[partkname]['S'] = value
+    def _write_to_dynamodb(self):
+        self.logger.Write(["EBCDICProcess: Writing to DynamoDB is not implemented yet"])
+        # Original code:
+        # response = boto3.client('dynamodb').batch_write_item(RequestItems={ table : data })

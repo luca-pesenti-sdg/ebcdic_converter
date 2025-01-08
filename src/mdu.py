@@ -2,12 +2,14 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from core.extract import EBCDICProcess
 from core.log import Log
 from core.cli import CommandLine
 import core.extract as Extract
-import core.parsecp as Parsecp
+from core.parsecp import EBCDICParser
 
 import sys
+
 
 def main(arg):
 
@@ -15,14 +17,18 @@ def main(arg):
 
     log = Log(cli.verbose)
 
-    if cli.args.function == 'extract':
-        Extract.FileProcess(log, cli.args)
-    elif cli.args.function == 'parse':
-        Parsecp.RunParse(log, cli.args)
+    if cli.args.function == "extract":
+        EBCDICProcess(log, cli.args, output_separator='\x7F').process()
+    elif cli.args.function == "parse":
+        EBCDICParser().run_parse(log, cli.args)
+    elif cli.args.function == "both":
+        EBCDICParser().run_parse(log, cli.args)
+        EBCDICProcess(log, cli.args, output_separator='\x7F').process()
     else:
-        log.Write(['not implemented yet'])
+        log.Write(["not implemented yet"])
 
     log.Finish()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main(sys.argv)

@@ -2,14 +2,15 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from core.extract2 import EBCDICProcess
+from core.extract import EBCDICProcess
 from core.log import Log
 from core.cli import CommandLine
 import core.extract as Extract
-from core.parsecp2 import EBCDICParser
+from core.parsecp import EBCDICParser
 
 import sys
 
+# TODO: switch CLI with config
 
 def main(arg):
 
