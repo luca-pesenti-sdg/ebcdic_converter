@@ -1,6 +1,0 @@
-2024-12-16 09:52:40.436986 | started
-2024-12-16 09:52:40.437263 | EBCDICProcess: single-threaded processing selected
-2024-12-16 09:52:40.437355 | Creating output file |  | sample-data/COBPACK.ASCII.txt
-2024-12-16 09:52:40.437561 | EBCDICProcess: single-threaded processing selected
-2024-12-16 09:52:40.451288 | Records processed | 100
-2024-12-16 09:52:40.451473 Seconds 0.014452

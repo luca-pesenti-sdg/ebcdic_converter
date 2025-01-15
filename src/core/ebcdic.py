@@ -100,17 +100,20 @@ class EBCDICDecoder:
             sign = -1 if binary_data[0] == "1" else 1  # 1 bit
             exponent = binary_data[1:8]  # 7 bits
 
-            mantissa = binary_data[7:]  # 56 bits
+            mantissa = binary_data[8:]  # 56 bits
             mantissa_hex = hex(int(mantissa, 2))  # convert to hex
             real_exponent_decimal = int(exponent, 2) - 64  # 64 is the exponent bias
             mantissa_cleaned = mantissa_hex[2:]  # remove the "0x" prefix
             number = int(mantissa_cleaned, 16) * (16 ** (real_exponent_decimal - 14))
             
             # print('binary\t\t\t:', binary_data)
+            # print('mantissa\t\t\t:', mantissa)
             # print('real_exponent_decimal\t:', real_exponent_decimal)
+            # print('mantissa_hex\t:', mantissa_hex)
             # print('mantissa_cleaned\t:', mantissa_cleaned)
-            # print('number\t\t\t:', number)
+            # print('number\t\t\t:', str(number*sign))
             # print('-----------')
+            # exit()
 
             return str(number*sign)
 

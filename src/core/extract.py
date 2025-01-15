@@ -3,10 +3,9 @@
 
 from io import BufferedReader, TextIOWrapper
 import multiprocessing as mp
-from typing import List, Union
+from typing import Dict, List, Union
 from core.ebcdic import EBCDICDecoder
 from core.filemeta import FileMetaData
-from core.ebcdic import unpack
 from itertools import cycle
 from pathlib import Path
 import argparse
@@ -15,7 +14,7 @@ from core.log import Log
 
 class EBCDICProcess:
 
-    def __init__(self, logger: Log, extra_args: argparse.Namespace, output_separator: str = None):
+    def __init__(self, logger: Log, extra_args: Union[argparse.Namespace, Dict], output_separator: str = None):
         self._logger = logger
         self._extra_args = extra_args
 
@@ -71,7 +70,6 @@ class EBCDICProcess:
         layout = self._metadata_file.Layout(record)
         if layout != "discard":
             for transf in self._metadata_file.general[layout]:
-                # print(record[transf["offset"] : transf["offset"] + transf["bytes"]])
                 self._add_field(
                     output_record=output_record,
                     id=transf["name"],
@@ -158,11 +156,9 @@ class EBCDICProcess:
 
     def _read(self, input):
         if self._record_format == "fb":
-            print(input)
             return input.read(self._record_length)
         else:
             l = self._getRDW(input.read(4))
-            print(l)
             return input.read(l)
 
     # endregion
@@ -192,7 +188,6 @@ class EBCDICProcess:
         input_file = self._input_obj_map[self._input_type]()
         while index < self._max or self._max == 0:
             record = self._read(input_file)
-            print(record)
             if not record:
                 break
             index += 1

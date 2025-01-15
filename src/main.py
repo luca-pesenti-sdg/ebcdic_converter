@@ -12,17 +12,31 @@ import sys
 
 # TODO: switch CLI with config
 
-def main(arg):
-
+def _init_cli():
     cli = CommandLine()
-
+    print('CLI arguments', vars(cli.args))
+    print(cli)
+    print(cli.verbose)
     log = Log(cli.verbose)
+    return cli, log
 
-    param = EBCDICParser().run_parse(log, cli.args)
-    EBCDICProcess(log, cli.args, output_separator='\x7F').process()
+def main(request, arg):
+    print(arg)
+    if len(arg) == 1:
+        params = request.get_json()
+        verbose = params.get('verbose', False)
+        log = Log(verbose)
+    else:
+        cli, log = _init_cli()
+        params = vars(cli.args)
+
+    param = EBCDICParser().run_parse(params)
+    EBCDICProcess(log, params, output_separator=',').process()
+    # EBCDICProcess(log, params, output_separator='\x7F').process()
 
     log.Finish()
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    # _init_cli()
+    main({}, sys.argv)

@@ -61,23 +61,23 @@ class EBCDICParser:
                             self._altpos += 1
                             self._altlay.insert(self._altpos, red)
 
-    def run_parse(self, log, iparm):
+    def run_parse(self, param: dict):
         self._transf = []
         self._record_length = 0
 
         # Open the copybook for reading and creates the dictionary
-        with open(iparm.copybook, "r") as finp:
+        with open(param['copybook'], "r") as finp:
             output = Copybook(finp.readlines()).to_dict()
         # Write the dict into a file if requested
-        if iparm.json_debug != "":
-            with open(iparm.json_debug, "w") as fout:
+        if param['json_debug'] != "":
+            with open(param['json_debug'], "w") as fout:
                 fout.write(json.dumps(output, indent=4))
 
         # get the default values
-        param = vars(iparm)
+        # param = vars(iparm)
 
-        self._partklen = iparm.part_k_len
-        self._sortklen = iparm.sort_k_len
+        self._partklen = param['part_k_len']
+        self._sortklen = param['sort_k_len']
 
         self.create_extraction(output, [], self._partklen, self._sortklen)
 
@@ -104,6 +104,6 @@ class EBCDICParser:
             ialt += 1
             param["transf" + str(ialt)] = self._transf
             
-        with open(iparm.json, "w") as fout:
+        with open(param['json'], "w") as fout:
             fout.write(json.dumps(param, indent=4))
         return param
