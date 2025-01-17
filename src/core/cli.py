@@ -8,8 +8,8 @@ class CommandLine:
 
         parser = {}
 
-        with open(os.path.dirname(os.path.realpath(__file__)) + '//config.json', 'r') as configfile:
-            config = json.load(configfile)
+        with open(os.path.dirname(os.path.realpath(__file__)) + '//config.json', 'r') as config_file:
+            config = json.load(config_file)
 
         main_arg = argparse.ArgumentParser()
 

@@ -1,190 +1,184 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copybook structure
+# The layout of a copybook follows the file layout of Cobol.
+# This means that columns have specific uses and this also needs
+# to be followed in the Copybook.
+# Columns 1-6 are left empty and are where the line numbers were stored on cards.
+# This area is called the Sequence number area and is ignored by the compiler.
+# Next we have the indicator area which is a single column (7).
+# This column is mainly used to indicate if that line is a comment.
+# As seen above. However it also has a few other characters such as /, -, and D.
+# They have the following effects: a comment that w will be printed, the line
+# continues from the previous one, and enables that line in debugging mode.
+# Area A (8-11) contains the level numbers such as 01 and 10 in our example.
+# After 01 it does not matter the exact numbers used for ordering.
+# However, the level numbers do need to be larger than any sections below.
+# Columns 12-72 are called Area B and that contains any other code not allowed in
+# Area A. This contains the name of the field in the above example that continues
+# to around column 25. Next is the definition of the datatype.
+# Described in the next section.
+# 73+ is the program name area. Historically the max was 80 due to punch cards.
+# It is used to identify the sequence of the card.
+
+# Summarizing:
+# 1-6: Sequence number area
+# 7: Indicator area
+# 8-11: Level number area
+# 12-72: Area B → Name of the field, datatype, etc.
+# 73+: Program name area
 
 
-# FUNCTIONS TO HANDLE THE HIERARCHICAL STACK #
-def fGetSetack():
-    global stack, output
-    tmp = output
-    for k in stack:
-        tmp = tmp[stack[k]]
-    return tmp
+class Copybook:
+    def __init__(self, lines):
+        self._lines = lines
+        self.__filler_count = 0
+        self.__cursor = 0
+        self.__output = {}
+        self.__stack = {}
 
-
-def fRemStack(iStack, iLevel):
-    NewStack = {}
-    for k in iStack:
-        if k < iLevel:
-            NewStack[k] = iStack[k]
-    return NewStack
-
-
-# PIC 999, 9(3), XXX, X(3)...
-def getPicSize(arg):
-    if arg.find("(") > 0:
-        return int(arg[arg.find("(") + 1 : arg.find(")")])
-    else:
-        return len(arg)
-
-
-# TYPE AND LENGTH CALCULATION #
-def getLenType(atr, p):
-    ret = {}
-    # FirstCh = atr[3][:1].upper()
-    # Picture = atr[3].upper()
-    FirstCh = atr[p][:1].upper()
-    Picture = atr[p].upper()
-
-    # data type
-    if "COMP-3" in atr and FirstCh == "S":
-        ret["type"] = "pd+"
-    elif "COMP-3" in atr:
-        ret["type"] = "pd"
-    elif "COMP" in atr and FirstCh == "S":
-        ret["type"] = "bi+"
-    elif "COMP" in atr:
-        ret["type"] = "bi"
-    elif FirstCh == "S":
-        ret["type"] = "zd+"
-    elif FirstCh == "9":
-        ret["type"] = "zd"
-    else:
-        ret["type"] = "ch"
-
-    # Total data length
-    PicNum = Picture.replace("V", " ").replace("S", "").replace("-", "").split()
-
-    Lgt = getPicSize(PicNum[0])
-
-    if len(PicNum) == 1 and FirstCh != "V":
-        ret["dplaces"] = 0
-    elif FirstCh != "V":
-        ret["dplaces"] = getPicSize(PicNum[1])
-        Lgt += ret["dplaces"]
-    else:
-        ret["dplaces"] = getPicSize(PicNum[0])
-
-    ret["length"] = Lgt
-
-    # Data size in bytes
-    if ret["type"][:2] == "pd":
-        ret["bytes"] = int(Lgt / 2) + 1
-    elif ret["type"][:2] == "bi":
-        if Lgt < 5:
-            ret["bytes"] = 2
-        elif Lgt < 10:
-            ret["bytes"] = 4
+    # Old function getPicSize
+    def __get_pic_size(self, arg):
+        if arg.find("(") > 0:
+            return int(arg[arg.find("(") + 1 : arg.find(")")])
         else:
+            return len(arg)
+
+    # Old function getLenType
+    def __get_len_type(self, attribute, pic):
+        ret = {}
+        FirstCh = attribute[pic][:1].upper()
+        Picture = attribute[pic].upper()
+
+        if "COMP-2" in attribute and FirstCh == "S":
+            ret["type"] = "dp+"
+        elif "COMP-2" in attribute:
+            ret["type"] = "dp"
+        elif "COMP-3" in attribute and FirstCh == "S":
+            ret["type"] = "pd+"
+        elif "COMP-3" in attribute:
+            ret["type"] = "pd"
+        elif "COMP" in attribute and FirstCh == "S":
+            ret["type"] = "bi+"
+        elif "COMP" in attribute:
+            ret["type"] = "bi"
+        elif FirstCh == "S":
+            ret["type"] = "zd+"
+        elif FirstCh == "9":
+            ret["type"] = "zd"
+        else:
+            ret["type"] = "ch"
+
+        PicNum = Picture.replace("V", " ").replace("S", "").replace("-", "").split()
+        Lgt = self.__get_pic_size(PicNum[0])
+
+        if len(PicNum) == 1 and FirstCh != "V":
+            ret["dplaces"] = 0
+        elif FirstCh != "V":
+            ret["dplaces"] = self.__get_pic_size(PicNum[1])
+            Lgt += ret["dplaces"]
+        else:
+            ret["dplaces"] = self.__get_pic_size(PicNum[0])
+
+        ret["length"] = Lgt
+
+        if ret["type"][:2] == "pd":
+            ret["bytes"] = int(Lgt / 2) + 1
+        elif ret["type"][:2] == "bi":
+            if Lgt < 5:
+                ret["bytes"] = 2
+            elif Lgt < 10:
+                ret["bytes"] = 4
+            else:
+                ret["bytes"] = 8
+        elif ret["type"][:2] in ["dp", "dp+"]:
             ret["bytes"] = 8
-    else:
-        if FirstCh == "-":
-            Lgt += 1
-        ret["bytes"] = Lgt
-
-    return ret
-
-
-############# DICTIONARY AND HIERARCHICAL LOGIC ###########################
-def add2dict(lvl, grp, itm, stt, id):
-    """
-    Adds an item to a dictionary with specific attributes and handles nested structures.
-    Parameters:
-    lvl (int): The level of the item in the hierarchy.
-    grp (bool): Indicates if the item is a group.
-    itm (str): The name of the item.
-    stt (list): A list of strings representing the item's attributes.
-    id (int): The identifier for the item.
-    Raises:
-    Exception: If 'OCCURS' is present in stt without 'TIMES'.
-    Notes:
-    - If the item name is "FILLER", it appends a unique number to it.
-    - Manages a stack to handle nested structures based on the level.
-    - Extracts and sets various attributes for the item, such as 'occurs', 'redefines', 'pict', 'type', 'length', 'bytes', and 'dplaces'.
-    """
-
-    global cur, output, last, stack, FillerCount
-    if itm.upper() == "FILLER":
-        FillerCount += 1
-        itm = itm + "_" + str(FillerCount)
-    if lvl <= cur:
-        stack = fRemStack(stack, lvl)
-
-    stk = fGetSetack()
-    stk[itm] = {}
-    stk[itm]["id"] = id
-    stk[itm]["level"] = lvl
-    stk[itm]["group"] = grp
-
-    if "OCCURS" in stt:
-        if "TIMES" in stt:
-            stk[itm]["occurs"] = int(stt[stt.index("TIMES") - 1])
         else:
-            raise Exception("OCCURS WITHOU TIMES?" + " ".join(stt))
+            if FirstCh == "-":
+                Lgt += 1
+            ret["bytes"] = Lgt
+        return ret
 
-    if "REDEFINES" in stt:
-        stk[itm]["redefines"] = stt[stt.index("REDEFINES") + 1]
+    # Old function fGetSetack
+    def __get_stack(self):
+        tmp = self.__output
+        for k in self.__stack:
+            tmp = tmp[self.__stack[k]]
+        return tmp
 
-    if grp == True:
-        stack[lvl] = itm
-        cur = lvl
-    else:
-        tplen = {}
-        pic = stt.index("PIC") + 1
-        tplen = getLenType(stt, pic)
-        # stk[itm]['pict'] = stt[3]
-        stk[itm]["pict"] = stt[pic]
-        stk[itm]["type"] = tplen["type"]
-        stk[itm]["length"] = tplen["length"]
-        stk[itm]["bytes"] = tplen["bytes"]
-        stk[itm]["dplaces"] = tplen["dplaces"]
+    # Old function fRemStack
+    def __remove_stack(self, stack, level):
+        new_stack = {}
+        for k in stack:
+            if k < level:
+                new_stack[k] = stack[k]
+        return new_stack
 
-############################### MAIN ###################################
-# READS, CLEANS AND JOINS LINES #
+    def _add2dict(self, level, group, item, statement, id):
+        if item.upper() == "FILLER":
+            self.__filler_count += 1
+            item = item + "_" + str(self.__filler_count)
+        if level <= self.__cursor:
+            self.__stack = self.__remove_stack(self.__stack, level)
 
-FillerCount = 0
-cur = 0
-output = {}
-stack = {}
+        stack = self.__get_stack()
+        stack[item] = {}
+        stack[item]["id"] = id
+        stack[item]["level"] = level
+        stack[item]["group"] = group
 
+        if "OCCURS" in statement: 
+            if "TIMES" in statement:
+                stack[item]["occurs"] = int(statement[statement.index("TIMES") - 1])
+            else:
+                raise Exception("OCCURS WITHOUT TIMES?" + " ".join(statement))
 
-def toDict(lines):
-    """
-    Converts a list of lines from a copybook into a dictionary representation.
-    Args:
-        lines (list of str): The lines from the copybook file.
-    Returns:
-        dict: A dictionary representation of the copybook fields.
-    Raises:
-        SystemExit: If an unexpected character is found in column 7 of any line.
-    Notes:
-        - Lines with a '*' in column 7 are considered comments and ignored.
-        - Lines with 'SKIP1', 'SKIP2', or 'SKIP3' in the first attribute are skipped.
-        - Fields are split by periods and attributes are further split by spaces.
-        - The function assumes that the `add2dict` function is defined elsewhere in the code.
-    """
+        if "REDEFINES" in statement:
+            stack[item]["redefines"] = statement[statement.index("REDEFINES") + 1]
 
-    id = 0
-    stt = ""
-    for line in lines:
-        if len(line[6:72].strip()) > 1:
-            if line[6] in [" ", "-"]:
-                if not line[6:72].split()[0] in ["SKIP1", "SKIP2", "SKIP3"]:
-                    stt += line[6:72].replace("\t", " ")
-            elif line[6] != "*":
-                print("Unnexpected character in column 7:", line)
-                quit()
-    # READS FIELD BY FIELD / SPLITS ATTRIBUTES #
-    for variable in stt.split("."):
-        attribute = variable.split()
-        if len(attribute) > 0:
-            if attribute[0] != "88":
-                id += 1
-                add2dict(
-                    int(attribute[0]),
-                    False if "PIC" in attribute else True,
-                    attribute[1],
-                    attribute,
-                    id,
-                )
+        if group == True:
+            self.__stack[level] = item
+            self.__cursor = level
+        else:
+            tplen = {}
+            if "PIC" in statement:
+                pic = statement.index("PIC") + 1
+            elif "COMP-2" in statement:
+                pic = statement.index("COMP-2")
+            else:
+                raise Exception("PIC OR COMP-2 MISSING?" + " ".join(statement))
+            tplen = self.__get_len_type(statement, pic)
+            # stack[item]['pict'] = statement[3]
+            stack[item]["pict"] = statement[pic]
+            stack[item]["type"] = tplen["type"]
+            stack[item]["length"] = tplen["length"]
+            stack[item]["bytes"] = tplen["bytes"]
+            stack[item]["dplaces"] = tplen["dplaces"]
 
-    return output
+    def to_dict(self):
+
+        id = 0
+        statement = ""
+        for line in self._lines:
+            content = line[6:72]
+            if len(content.strip()) > 1:
+                first_char = line[6]
+                if first_char in [" ", "-"]:
+                    first_word = content.split()[0]
+                    if not first_word in ["SKIP1", "SKIP2", "SKIP3"]:
+                        statement += content.replace("\t", " ")
+                elif first_char != "*":
+                    print("Unexpected character in column 7:", line)
+                    quit()
+        for variable in statement.split("."):
+            attribute = variable.split()
+            if len(attribute) > 0:
+                if attribute[0] != "88" and attribute[0] != "EXEC":
+                    id += 1
+                    is_group = False if "PIC" in attribute or "COMP-2" in attribute else True
+                    self._add2dict(
+                        level=int(attribute[0]),
+                        group=is_group,
+                        item=attribute[1],
+                        statement=attribute,
+                        id=id,
+                    )
+        return self.__output
