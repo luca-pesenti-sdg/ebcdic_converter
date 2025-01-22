@@ -1,7 +1,6 @@
 import json
 from typing import List, Tuple, Union
 from core.log import Log
-import pandas as pd
 import pyarrow as pa
 import pyarrow.csv as pa_csv
 import pyarrow.parquet as pa_parquet
@@ -21,6 +20,18 @@ data_type_mapping = {
 
 class FileHandler:
     def __init__(self, logger: Log, path_to_file: str, output_separator: str):
+        """Initialize the Parquet class.
+
+        Parameters:
+        -----------
+        logger : Log
+            Logger instance for logging messages.
+        path_to_file : str
+            Path to the file to be processed.
+        output_separator : str
+            Separator to be used in the output.
+
+        """
         self._logger = logger
         self._path_to_file = path_to_file
         self._output_separator = output_separator
@@ -28,9 +39,21 @@ class FileHandler:
     def _clean_field(
         self, fields_name: str, chars_to_rm: List[Tuple[str, str]] = [("-", "_")]
     ) -> str:
+        """Cleans the given field name by replacing specified characters.
+
+        Parameters:
+        -----------
+        fields_name : str
+            The name of the field to be cleaned.
+        chars_to_rm : List[Tuple[str, str]], optional
+            A list of tuples where each tuple contains a character to be replaced and the character to replace it with. Defaults to [("-", "_")].
+
+        Returns:
+        --------
+        str
+            The cleaned field name with specified characters replaced.
         """
-        Rename headers of the dataframe
-        """
+
         for char in chars_to_rm:
             fields_name = fields_name.replace(char[0], char[1])
         return fields_name
@@ -38,9 +61,25 @@ class FileHandler:
     def _extract_schema_from_json(
         self, json_schema: Union[str, dict], is_file: bool = False
     ) -> pa.schema:
+        """Extracts a PyArrow schema from a JSON schema.
+        
+        Parameters:
+        -----------
+        json_schema : (Union[str, dict])
+            The JSON schema, either as a string (file path) or a dictionary.
+        is_file : (bool, optional), optional
+            Flag indicating if `json_schema` is a file path. Defaults to False.
+        
+        Returns:
+        -----------
+            pa.schema: The corresponding PyArrow schema.
+        
+        Raises:
+        -------
+            FileNotFoundError: If `is_file` is True and the file does not exist.
+            json.JSONDecodeError: If the JSON schema is not valid.
         """
-        Extract schema from JSON file
-        """
+
         if is_file:
             with open(json_schema, "r") as f:
                 json_data = json.load(f)
@@ -58,6 +97,29 @@ class FileHandler:
         schema: Union[pa.schema, List[Tuple[str, pa.DataType]]] = None,
         json_schema: Union[str, dict] = None,
     ):
+        """Converts a CSV file to a Parquet file using the provided schema or JSON schema.
+
+        Parameters:
+        -----------
+        schema : Union[pa.schema, List[Tuple[str, pa.DataType]]], optional
+            The schema to use for the Parquet file. Can be a pyarrow schema or a list of tuples
+            where each tuple contains a column name and its corresponding pyarrow data type.
+        json_schema : Union[str, dict], optional
+            The JSON schema to use for the Parquet file. Can be a JSON string or a dictionary.
+
+        Raises:
+        -------
+        Exception
+            If neither schema nor json_schema is provided.
+            If the provided schema is not a list or pa.schema.
+
+        Notes:
+        ------
+        If both schema and json_schema are provided, the schema will take precedence.
+        The method logs the conversion process and writes the Parquet file to the same
+        directory as the CSV file, replacing the .csv extension with .parquet.
+        """
+
         self._logger.Write(["EBCDICProcess: Converting from csv to parquet"])
 
         if not schema and not json_schema:
