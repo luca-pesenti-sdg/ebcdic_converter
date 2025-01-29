@@ -68,11 +68,12 @@ class EBCDICDecoder:
         """
         # Text
         if self._type == "ch":
-            return (
-                self._bytes.decode("cp037").replace("\x00", "").rstrip()
-                if self._rem_lv == True
-                else self._bytes.decode("cp037")
-            )
+            return self._bytes.decode("cp037").replace("\x00", "")
+            # return (
+            #     self._bytes.decode("cp037").replace("\x00", "").rstrip()
+            #     if self._rem_lv == True
+            #     else self._bytes.decode("cp037")
+            # )
 
         # Packed Decimal
         elif self._type == "pd" or self._type == "pd+":
