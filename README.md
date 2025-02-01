@@ -1,3 +1,10 @@
+# How to run
+```bash
+python3 src/main.py both path/to/copybook outpath/copybook/json -input path/to/ebcdic -output path/to/parquet/result -print 10000 -verbose true
+```
+
+
+# ORIGINAL README BELOW ↓↓
 # Mainframe Data Utilities v2
 
 | :exclamation:  Looking for [Mainframe Data Utilities v1](docs/99-README-v1.md)? :exclamation: |

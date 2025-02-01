@@ -16,14 +16,11 @@ SEPARATOR = "\x7F"
 def _init_cli():
     cli = CommandLine()
     print("CLI arguments", vars(cli.args))
-    print(cli)
-    print(cli.verbose)
     log = Log(cli.verbose)
     return cli, log
 
 
 def main(request, arg):
-    print(arg)
     if len(arg) == 1:
         params = request.get_json()
         verbose = params.get("verbose", False)
@@ -42,5 +39,6 @@ def main(request, arg):
 
 
 if __name__ == "__main__":
-    # _init_cli()
+    # HOW TO RUN
+    # python3 src/main.py both path/to/copybook outpath/copybook/json -input path/to/ebcdic -output path/to/parquet/result -print 10000 -verbose true
     main({}, sys.argv)
