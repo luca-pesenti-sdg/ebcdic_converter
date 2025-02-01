@@ -145,7 +145,8 @@ class FileHandler:
             self._path_to_file,
             read_options=pa_csv.ReadOptions(column_names=schema.names),
             convert_options=pa_csv.ConvertOptions(
-                strings_can_be_null=True,
+                # strings_can_be_null=True,
+                # INFO: https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html#pyarrow.csv.ConvertOptions
             ),
             parse_options=pa_csv.ParseOptions(delimiter=self._output_separator),
         )
