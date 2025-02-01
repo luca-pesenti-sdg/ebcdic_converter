@@ -10,7 +10,6 @@ from itertools import cycle
 from pathlib import Path
 import argparse
 from core.log import Log
-import pandas as pd
 
 
 class EBCDICProcess:
@@ -69,40 +68,6 @@ class EBCDICProcess:
             "s3_url": self._get_s3_file_obj,
             "local": self._get_local_file_obj,
         }
-
-    def _rename_headers(self, dataframe: pd.DataFrame) -> pd.DataFrame:
-        """
-        Replace "-" in the header of the data frame to avoid issues with Parquet
-        """
-        cols_rename = {
-            col: col.replace("-", "_") for col in dataframe.columns if "-" in col
-        }
-
-        if len(cols_rename) > 0:
-            self._logger.Write([f"Renaming columns: {cols_rename}"])
-
-            try:
-                dataframe.rename(columns=cols_rename, inplace=True)
-                # I don't trust inplace, so I check if the renaming worked
-                check_col = list(cols_rename.values())[0]
-                dataframe[check_col]
-
-            except KeyError as e:
-                self._logger.Write([f"Error renaming columns: {cols_rename}"])
-                raise Exception(e)
-
-            return dataframe
-
-        else:
-            self._logger.Write(["No columns to rename"])
-            return dataframe
-
-    def _to_parquet(self):
-        self._logger.Write(["EBCDICProcess: Converting from csv to parquet"])
-        csv_path = self._working_folder + self._output
-        df = pd.read_csv(csv_path, sep=self._output_separator, keep_default_na=False)
-        df = self._rename_headers(df)
-        df.to_parquet(csv_path.replace(".csv", ".parquet"), engine="pyarrow")
 
     def _write_output(
         self,
@@ -180,7 +145,6 @@ class EBCDICProcess:
         if self._single_thread:
             output_file = self._generate_outfile_single_thread()
             self._process_single_thread(output_file)
-            self._to_parquet()
         else:
             output_files = self._generate_outfile_multi_thread()
             self._process_multi_thread(output_files)
