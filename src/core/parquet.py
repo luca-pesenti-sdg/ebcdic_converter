@@ -7,14 +7,14 @@ import pyarrow.parquet as pa_parquet
 
 data_type_mapping = {
     "ch": pa.string(),
-    "zd": pa.float16(),
-    "zd+": pa.float16(),
-    "bi": pa.float16(),
-    "bi+": pa.float16(),
-    "dp": pa.float16(),
-    "dp+": pa.float16(),
-    "pd": pa.float16(),
-    "pd+": pa.float16(),
+    # "zd": pa.float64(),
+    # "zd+": pa.float64(),
+    # "bi": pa.float64(),
+    # "bi+": pa.float64(),
+    "dp": pa.float64(),
+    "dp+": pa.float64(),
+    # "pd": pa.float64(),
+    # "pd+": pa.float64(),
 }
 
 
@@ -62,18 +62,18 @@ class FileHandler:
         self, json_schema: Union[str, dict], is_file: bool = False
     ) -> pa.schema:
         """Extracts a PyArrow schema from a JSON schema.
-        
+
         Parameters:
         -----------
         json_schema : (Union[str, dict])
             The JSON schema, either as a string (file path) or a dictionary.
         is_file : (bool, optional), optional
             Flag indicating if `json_schema` is a file path. Defaults to False.
-        
+
         Returns:
         -----------
             pa.schema: The corresponding PyArrow schema.
-        
+
         Raises:
         -------
             FileNotFoundError: If `is_file` is True and the file does not exist.
@@ -89,7 +89,10 @@ class FileHandler:
         fields = []
         for field in json_data.get("transf", []):
             field_name = self._clean_field(field["name"])
-            fields.append((field_name, data_type_mapping[field["type"]]))
+            data_type = data_type_mapping.get(
+                field["type"], pa.decimal128(38, field["dplaces"])
+            )
+            fields.append((field_name, data_type))
         return pa.schema(fields)
 
     def to_parquet(
@@ -145,9 +148,13 @@ class FileHandler:
             self._path_to_file,
             read_options=pa_csv.ReadOptions(column_names=schema.names),
             convert_options=pa_csv.ConvertOptions(
-                # strings_can_be_null=True,
+                column_types=schema,
+                strings_can_be_null=True,
                 # INFO: https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html#pyarrow.csv.ConvertOptions
             ),
-            parse_options=pa_csv.ParseOptions(delimiter=self._output_separator),
+            parse_options=pa_csv.ParseOptions(delimiter=self._output_separator,quote_char=False,),
         )
-        pa_parquet.write_table(csv, self._path_to_file.replace(".csv", ".parquet"))
+        print(csv.schema)
+        pa_parquet.write_table(
+            csv, self._path_to_file.replace(".csv", ".parquet"), version="2.6"
+        )
