@@ -2,6 +2,7 @@ import json
 from typing import List, Tuple, Union
 from core.log import Log
 import pyarrow as pa
+import traceback
 import pyarrow.csv as pa_csv
 import pyarrow.parquet as pa_parquet
 
@@ -143,18 +144,24 @@ class FileHandler:
             schema = pa.schema(schema)
         else:
             raise Exception("Schema must be a list or pa.schema")
+        try:
+            csv = pa_csv.read_csv(
+                self._path_to_file,
+                read_options=pa_csv.ReadOptions(column_names=schema.names),
+                convert_options=pa_csv.ConvertOptions(
+                    column_types=schema,
+                    strings_can_be_null=True,
+                    # INFO: https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html#pyarrow.csv.ConvertOptions
+                ),
+                parse_options=pa_csv.ParseOptions(delimiter=self._output_separator,quote_char=False,),
+            )
+            print(csv.schema)
+            pa_parquet.write_table(
+                csv, self._path_to_file.replace(".csv", ".parquet"), version="2.6"
+            )
+            print(f"\33[92mParquet file saved to {self._path_to_file.replace('.csv', '.parquet')}\33[0m")
+        except Exception as e:
+            print(f"\33[91mParquet file {self._path_to_file.replace('.csv', '.parquet')} raised the following error")
+            traceback.print_exc()
+            print("\33[0m")
 
-        csv = pa_csv.read_csv(
-            self._path_to_file,
-            read_options=pa_csv.ReadOptions(column_names=schema.names),
-            convert_options=pa_csv.ConvertOptions(
-                column_types=schema,
-                strings_can_be_null=True,
-                # INFO: https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html#pyarrow.csv.ConvertOptions
-            ),
-            parse_options=pa_csv.ParseOptions(delimiter=self._output_separator,quote_char=False,),
-        )
-        print(csv.schema)
-        pa_parquet.write_table(
-            csv, self._path_to_file.replace(".csv", ".parquet"), version="2.6"
-        )
