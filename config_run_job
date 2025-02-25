@@ -1,0 +1,8 @@
+/mnt/raw/copybook/Q2SPTFUH.txt
+/mnt/processed/copybook_json/test.json
+-input
+/mnt/raw/EBCDIC/CLDOMPTF/CLDOMPTF.2025022400000000.TXT
+-output
+/mnt/processed/data/test.parquet
+-print
+10000
